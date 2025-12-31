@@ -75,11 +75,21 @@ def analyze_cv_with_ai(api_key, cv_text, job_desc):
 # Barre latérale pour la configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input("Clé API OpenAI", type="password", help="Nécessaire pour faire fonctionner l'IA")
-    st.info("💡 Astuce Portfolio : Pour la démo, utilisez une clé temporaire.")
-    st.markdown("---")
-    st.write("Developed by **[Votre Nom]**")
+    
+    # CHARGEMENT INTELLIGENT DE LA CLÉ
+    # 1. On regarde si la clé est dans les secrets (Config Cloud)
+    if "OPENAI_API_KEY" in st.secrets:
+        st.success("✅ Clé API chargée du serveur")
+        api_key = st.secrets["OPENAI_API_KEY"]
+    
+    # 2. Sinon, on la demande à l'utilisateur (Mode Local ou sans secret)
+    else:
+        api_key = st.text_input("Clé API OpenAI", type="password", help="Nécessaire pour faire fonctionner l'IA")
+        st.info("Entrez votre clé pour tester.")
 
+    st.markdown("---")
+    st.write("Developed by **Oumar F. KEBE**")
+    
 # Titre Principal
 st.title("🤖 Smart-Screener PME")
 st.markdown("### L'Assistant de pré-qualification pour recruteurs pressés")
