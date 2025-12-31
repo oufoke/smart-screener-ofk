@@ -1,16 +1,13 @@
 import streamlit as st
 import json
+from typing import Optional, Dict, Any
 from PyPDF2 import PdfReader
 from openai import OpenAI
 
-#Configuration de la page (doit être la première commande Streamlit)
-st.set_page_config(
-    page_title="Assistant RH - PME",
-    page_icon="👔",
-    layout="wide"
-)
-
-# --- 1. LE CERVEAU (LE PROMPT) ---
+# --- CONSTANTES DE CONFIGURATION ---
+PAGE_TITLE = "Assistant RH - PME"
+PAGE_ICON = "👔"
+MODEL_NAME = "gpt-4o-mini"
 SYSTEM_PROMPT = """
 Tu es un Expert en Recrutement (DRH) avec 15 ans d'expérience.
 Ta mission est d'analyser un candidat par rapport à une offre d'emploi.
@@ -29,22 +26,47 @@ Tu dois répondre UNIQUEMENT au format JSON strict avec la structure suivante :
 }
 """
 
-# --- 2. FONCTIONS UTILITAIRES ---
+# --- CONFIGURATION DE LA PAGE ---
+st.set_page_config(
+    page_title=PAGE_TITLE,
+    page_icon=PAGE_ICON,
+    layout="wide"
+)
 
-def extract_text_from_pdf(pdf_file):
-    """Extrait le texte brut d'un fichier PDF uploadé."""
+# --- FONCTIONS MÉTIER ---
+
+def extract_text_from_pdf(pdf_file) -> Optional[str]:
+    """
+    Extrait le texte brut d'un fichier PDF.
+    
+    Args:
+        pdf_file: Le fichier binaire uploadé via Streamlit.
+        
+    Returns:
+        str: Le texte extrait ou None en cas d'erreur.
+    """
     try:
         reader = PdfReader(pdf_file)
         text = ""
         for page in reader.pages:
-            text += page.extract_text()
+            text += page.extract_text() or ""
         return text
     except Exception as e:
-        st.error(f"Erreur de lecture du PDF : {e}")
+        st.error(f"Erreur lors de la lecture du PDF : {str(e)}")
         return None
 
-def analyze_cv_with_ai(api_key, cv_text, job_desc):
-    """Envoie les données à l'API OpenAI pour analyse."""
+def analyze_cv_with_ai(api_key: str, cv_text: str, job_desc: str) -> Optional[Dict[str, Any]]:
+    """
+    Interroge l'API OpenAI pour analyser le CV par rapport à l'offre.
+    
+    Args:
+        api_key (str): La clé API OpenAI.
+        cv_text (str): Le contenu textuel du CV.
+        job_desc (str): La description du poste.
+        
+    Returns:
+        dict: La réponse JSON parsée ou None en cas d'échec.
+    """
     client = OpenAI(api_key=api_key)
     
     user_message = f"""
@@ -57,114 +79,118 @@ def analyze_cv_with_ai(api_key, cv_text, job_desc):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini", # Modèle rapide et économique
+            model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_message}
             ],
-            temperature=0.2,
+            temperature=0.2, # Température basse pour garantir la cohérence
             response_format={"type": "json_object"}
         )
+        # Parsing de la réponse JSON
         return json.loads(response.choices[0].message.content)
     except Exception as e:
-        st.error(f"Erreur API : {e}")
+        st.error(f"Erreur lors de l'appel API : {str(e)}")
         return None
 
-# --- 3. INTERFACE UTILISATEUR (UI) ---
+# --- FONCTION PRINCIPALE (MAIN) ---
 
-# Barre latérale pour la configuration
-with st.sidebar:
-    st.header("⚙️ Configuration")
+def main():
+    """Fonction principale gérant l'interface utilisateur."""
     
-    # CHARGEMENT INTELLIGENT DE LA CLÉ
-    # 1. On regarde si la clé est dans les secrets (Config Cloud)
-    if "OPENAI_API_KEY" in st.secrets:
-        st.success("✅ Clé API chargée du serveur")
-        api_key = st.secrets["OPENAI_API_KEY"]
-    
-    # 2. Sinon, on la demande à l'utilisateur (Mode Local ou sans secret)
-    else:
-        api_key = st.text_input("Clé API OpenAI", type="password", help="Nécessaire pour faire fonctionner l'IA")
-        st.info("Entrez votre clé pour tester.")
-
-    st.markdown("---")
-    st.write("Developed by **Oumar F. KEBE**")
-    
-# Titre Principal
-st.title("🤖 Smart-Screener PME")
-st.markdown("### L'Assistant de pré-qualification pour recruteurs pressés")
-st.markdown("---")
-
-# Création de deux colonnes
-col_input, col_result = st.columns([1, 1])
-
-# COLONNE DE GAUCHE : LES ENTRÉES
-with col_input:
-    st.subheader("1. Les Données")
-    
-    # Zone de texte pour l'offre
-    job_desc = st.text_area(
-        "Description du poste (Job Description)", 
-        height=200, 
-        placeholder="Collez ici l'offre d'emploi..."
-    )
-    
-    # Upload du CV
-    uploaded_file = st.file_uploader("CV du candidat (PDF uniquement)", type="pdf")
-
-    # Bouton d'action
-    analyze_btn = st.button("Lancer l'analyse 🚀", type="primary", use_container_width=True)
-
-# COLONNE DE DROITE : LES RÉSULTATS
-with col_result:
-    st.subheader("2. L'Analyse IA")
-
-    if analyze_btn:
-        if not api_key:
-            st.warning("⚠️ Veuillez entrer votre clé API OpenAI dans la barre latérale.")
-        elif not job_desc or not uploaded_file:
-            st.warning("⚠️ Veuillez remplir l'offre ET uploader un CV.")
+    # --- SIDEBAR : CONFIGURATION ---
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        
+        # Gestion sécurisée de la clé API
+        api_key = st.secrets.get("OPENAI_API_KEY")
+        if api_key:
+            st.success("✅ Clé API chargée du serveur")
         else:
-            with st.spinner("Le DRH virtuel analyse le document..."):
-                # 1. Extraction du texte
-                cv_text = extract_text_from_pdf(uploaded_file)
-                
-                if cv_text:
-                    # 2. Appel IA
-                    result = analyze_cv_with_ai(api_key, cv_text, job_desc)
-                    
-                    if result:
-                        # --- AFFICHAGE DU SCORE ---
-                        score = result.get("score_match", 0)
-                        
-                        # Couleur dynamique selon le score
-                        score_color = "green" if score >= 70 else "orange" if score >= 50 else "red"
-                        
-                        st.markdown(f"""
-                        <div style="text-align: center; border: 2px solid #f0f2f6; padding: 20px; border-radius: 10px;">
-                            <h2 style="margin:0;">Compatibilité</h2>
-                            <h1 style="color:{score_color}; font-size: 60px; margin:0;">{score}/100</h1>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        st.success(f"📝 **Synthèse :** {result['synthese']}")
+            api_key = st.text_input(
+                "Clé API OpenAI", 
+                type="password", 
+                help="Entrez votre clé API OpenAI pour tester l'application."
+            )
+            if not api_key:
+                st.info("Veuillez renseigner une clé API pour continuer.")
 
-                        # --- ONGLETS POUR LES DÉTAILS ---
-                        tab1, tab2, tab3 = st.tabs(["✅ Points Forts", "⚠️ Vigilance", "🎤 Entretien"])
+        st.markdown("---")
+        st.write("Developed by **Oumar F. KEBE**")
+
+    # --- MAIN CONTENT : INTERFACE ---
+    st.title("🤖 Smart-Screener PME")
+    st.markdown("### L'Assistant de pré-qualification pour recruteurs pressés")
+    st.markdown("---")
+
+    col_input, col_result = st.columns([1, 1])
+
+    # Colonne de Gauche : Inputs
+    with col_input:
+        st.subheader("1. Les Données")
+        job_desc = st.text_area(
+            "Description du poste", 
+            height=250, 
+            placeholder="Copiez-collez l'offre d'emploi ici..."
+        )
+        uploaded_file = st.file_uploader("CV du candidat (PDF)", type="pdf")
+        
+        analyze_btn = st.button("Lancer l'analyse 🚀", type="primary", use_container_width=True)
+
+    # Colonne de Droite : Résultats
+    with col_result:
+        st.subheader("2. L'Analyse IA")
+
+        if analyze_btn:
+            # Vérifications préliminaires
+            if not api_key:
+                st.warning("⚠️ Clé API manquante.")
+            elif not job_desc:
+                st.warning("⚠️ Veuillez saisir une description de poste.")
+            elif not uploaded_file:
+                st.warning("⚠️ Veuillez uploader un CV.")
+            else:
+                # Traitement
+                with st.spinner("Analyse du profil en cours..."):
+                    cv_text = extract_text_from_pdf(uploaded_file)
+                    
+                    if cv_text:
+                        result = analyze_cv_with_ai(api_key, cv_text, job_desc)
                         
-                        with tab1:
-                            for point in result['points_forts']:
-                                st.markdown(f"- {point}")
-                                
-                        with tab2:
-                            for point in result['points_vigilance']:
-                                st.markdown(f"- {point}")
-                                
-                        with tab3:
-                            st.info("Posez ces questions pour vérifier les compétences :")
-                            for q in result['questions_entretien']:
-                                st.markdown(f"❓ **{q}**")
-                        
-                        # Debug (optionnel, pour montrer au recruteur qu'on maîtrise la data brute)
-                        with st.expander("Voir le JSON brut (Données techniques)"):
-                            st.json(result)
+                        if result:
+                            # Affichage du Score
+                            score = result.get("score_match", 0)
+                            color = "green" if score >= 70 else "orange" if score >= 50 else "red"
+                            
+                            st.markdown(f"""
+                            <div style="text-align: center; border: 2px solid #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                                <h3 style="margin:0; color: #555;">Compatibilité</h3>
+                                <h1 style="color:{color}; font-size: 60px; margin:0;">{score}/100</h1>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            st.success(f"**Synthèse :** {result.get('synthese', 'Pas de synthèse disponible.')}")
+
+                            # Affichage détaillé via Onglets
+                            tab1, tab2, tab3 = st.tabs(["✅ Points Forts", "⚠️ Vigilance", "🎤 Entretien"])
+                            
+                            with tab1:
+                                for point in result.get('points_forts', []):
+                                    st.markdown(f"- {point}")
+                            
+                            with tab2:
+                                for point in result.get('points_vigilance', []):
+                                    st.markdown(f"- {point}")
+                                    
+                            with tab3:
+                                st.info("Questions suggérées :")
+                                for q in result.get('questions_entretien', []):
+                                    st.markdown(f"❓ **{q}**")
+                            
+                            # Zone technique (Debug)
+                            with st.expander("Voir les données brutes (JSON)"):
+                                st.json(result)
+
+# Point d'entrée du script
+if __name__ == "__main__":
+    main()
