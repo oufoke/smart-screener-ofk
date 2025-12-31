@@ -1,5 +1,9 @@
 # 🤖 Smart-Screener PME
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](LE_LIEN_DE_VOTRE_APP_ICI)
+
+> **Essayez l'application en direct ici : [Lancer la Démo](LE_LIEN_DE_VOTRE_APP_ICI)**
+
 ### Assistant de Recrutement propulsé par l'IA
 
 **Le Problème :** Les dirigeants de PME passent trop de temps à trier des CVs sans avoir d'expertise RH.
